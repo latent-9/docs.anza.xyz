@@ -111,7 +111,7 @@ In deciding whether to vote for a block `B`:
 2. Simulate popping off all the votes that would be expired by `B`
 3. Now index every vote in the tower from `[0, tower.length()]`, assuming that the most recent simulated vote `B` is index 0, the second most recent vote is index 1, etc.
 4. Let `T` be the vote in the tower with index equal to `threshold_check_depth`, currently hardcoded to `8`.
-5. Check all the blocks descended from `T`. Let `Votes` be the set of all votes in these blocks for `T` or any descendants `D_n` of `T`. Let `V` be the set of all validators that have made a vote in `V`. If the sum of the validators' stakes in `V` totals `>= 2/3` of the stake of the network, then we commit a vote to `T`.
+5. Check all the blocks descended from `T`. Let `Votes` be the set of all votes in these blocks for `T` or any descendants `D_n` of `T`. Let `V` be the set of all validators that have made a vote in `V`. If the sum of the validators' stakes in `V` exceeds `2/3` of the stake of the network, then we commit a vote to `T`.
 
 ### Algorithm parameters
 
@@ -121,7 +121,7 @@ The following parameters need to be tuned:
 - Rate of growth for lockouts in the stack \(2x\).
 - Starting default lockout \(2\).
 - Threshold check depth for minimum cluster commitment before committing to the fork \(8\).
-- Minimum cluster commitment size at threshold depth \(50%+\).
+- Minimum cluster commitment size at threshold depth \(> 2/3\).
 
 ### Fork Choice
 
