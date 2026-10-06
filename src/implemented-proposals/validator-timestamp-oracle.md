@@ -11,16 +11,12 @@ The general outline of the proposed implementation is as follows:
 
 - At regular intervals, each validator records its observed time for a known slot
   on-chain (via a Timestamp added to a slot Vote)
-- A client can request a block time for a rooted block using the `getBlockTime`
-  RPC method. When a client requests a timestamp for block N:
-
-  1. A validator determines a "cluster" timestamp for a recent timestamped slot
-     before block N by observing all the timestamped Vote instructions recorded on
-     the ledger that reference that slot, and determining the stake-weighted mean
-     timestamp.
-
-  2. This recent mean timestamp is then used to calculate the timestamp of
-     block N using the cluster's established slot duration
+- A client can request a block time using the `getBlockTime` RPC method. Each
+  Bank's Clock sysvar timestamp is calculated from the validator-provided
+  timestamps (see [Bank Timestamp Correction](bank-timestamp-correction.md))
+  and cached in Blockstore when the block is frozen; `getBlockTime` returns
+  that cached value for rooted blocks, and the current Bank's Clock sysvar
+  timestamp for blocks that have not yet been rooted.
 
 Requirements:
 
@@ -32,12 +28,10 @@ Requirements:
   ideally based on a function that uses inputs from all validators
 - Each validator must maintain a timestamp oracle
 
-The same implementation can provide a timestamp estimate for a not-yet-rooted
-block. However, because the most recent timestamped slot may or may not be
-rooted yet, this timestamp would be unstable (potentially failing requirement
-1). Initial implementation will target rooted blocks, but if there is a use case
-for recent-block timestamping, it will be trivial to add the RPC apis in the
-future.
+For blocks that have not yet been rooted, `getBlockTime` returns the current
+Bank's Clock sysvar timestamp. This estimate is unstable until the block is
+rooted, as the Clock sysvar timestamp of a not-yet-rooted Bank may still
+change.
 
 ## Recording Time
 
@@ -68,40 +62,15 @@ timestamp and corresponding slot to the currently stored values to verify that
 they are both monotonically increasing, and store the new slot and timestamp in
 the account.
 
-## Calculating Stake-Weighted Mean Timestamp
+## Calculating Block Times
 
-In order to calculate the estimated timestamp for a particular block, a
-validator first needs to identify the most recently timestamped slot:
+Each Bank's Clock sysvar timestamp is corrected on every new Bank using the
+validator-provided timestamps, as described in
+[Bank Timestamp Correction](bank-timestamp-correction.md): the runtime
+calculates a stake-weighted median of the active validators' timestamp
+estimates and bounds it so that it cannot drift too far from the theoretical
+estimate.
 
-```text
-let timestamp_slot = floor(current_slot / timestamp_interval);
-```
-
-Then the validator needs to gather all Vote WithTimestamp transactions from the
-ledger that reference that slot, using `Blockstore::get_slot_entries()`. As these
-transactions could have taken some time to reach and be processed by the leader,
-the validator needs to scan several completed blocks after the timestamp_slot to
-get a reasonable set of Timestamps. The exact number of slots will need to be
-tuned: More slots will enable greater cluster participation and more timestamp
-datapoints; fewer slots will speed how long timestamp filtering takes.
-
-From this collection of transactions, the validator calculates the
-stake-weighted mean timestamp, cross-referencing the epoch stakes from
-`staking_utils::staked_nodes_at_epoch()`.
-
-Any validator replaying the ledger should derive the same stake-weighted mean
-timestamp by processing the Timestamp transactions from the same number of
-slots.
-
-## Calculating Estimated Time for a Particular Block
-
-Once the mean timestamp for a known slot is calculated, it is trivial to
-calculate the estimated timestamp for subsequent block N:
-
-```text
-let block_n_timestamp = mean_timestamp + (block_n_slot_offset * slot_duration);
-```
-
-where `block_n_slot_offset` is the difference between the slot of block N and
-the timestamp_slot, and `slot_duration` is derived from the cluster's
-`slots_per_year` stored in each Bank
+When a Bank is frozen, its Clock sysvar timestamp is cached in Blockstore.
+Under Alpenglow, the Clock sysvar timestamp is instead set by the block
+producer in the block footer, within bounds that validators enforce.
